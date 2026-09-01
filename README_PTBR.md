@@ -99,10 +99,3 @@ pip install -r requirements.txt
 ```
 
 4. Execute o notebook em `notebooks/`.
-
-## Proximas melhorias
-
-- Expandir o uso da granularidade apropriada nas analises em nivel de stint, piloto-corrida e corrida, quando necessario.
-- Criar funcoes reutilizaveis para limpeza e visualizacao.
-- Padronizar titulos e legendas dos graficos em ingles.
-- Validar hipoteses com testes estatisticos ou modelos controlando por equipe, circuito e temporada.
