@@ -78,20 +78,17 @@ f1-data-analysis/
 ├── notebooks/
 │   └── f1_exploratory_data_analysis.ipynb
 ├── src/
-│   ├── data_cleaning.py
-│   └── visualization.py
+│   ├── f1_analysis.py
 ├── images/
 │   ├── stint_length_by_tire_compound.png
 │   ├── avg_pit_stop_by_season.png
 │   └── pit_stop_distribution.png
-└── reports/
-    └── technical_notes.md
 ```
 
 ## Como executar
 
 1. Baixe o dataset pelo link do Kaggle informado acima.
-2. Coloque o arquivo em `data/raw/`.
+2. Coloque o arquivo em `data/`.
 3. Instale as dependencias:
 
 ```bash
