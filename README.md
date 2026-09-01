@@ -133,10 +133,3 @@ pip install -r requirements.txt
 ```
 
 4. Run the notebook in `notebooks/`.
-
-## Next Improvements
-
-- Expand the use of appropriate analysis granularity across stint-level, driver-race-level and race-level metrics when necessary.
-- Create reusable cleaning and visualization functions.
-- Standardize chart titles and labels in English.
-- Validate hypotheses with statistical tests or models controlling for constructor, circuit and season.
