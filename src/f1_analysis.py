@@ -1,0 +1,622 @@
+# -*- coding: utf-8 -*-
+"""
+Formula 1 Data Analysis - Exploratory Data Analysis
+
+Script version generated from the final updated notebook.
+Dataset: f1_pitstops_2018_2024.csv
+"""
+
+
+# ------------------------------------------------------------------------------
+# **Trabalho Análise Exploratória de Dados - Inteligência Artificial - UFF**
+# O trabalho foi feito a partir de uma base de dados dos anos de 2018-2024 da Formula 1.
+# Autor: Samuel Detone Dutra
+#
+# Dados utilizados foram obtidos do Kaggle.
+# Link: https://www.kaggle.com/datasets/akashrane2609/f1-stint-data-with-aggression-scores
+# ------------------------------------------------------------------------------
+
+# Bibliotecas que serão utilizadas:
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# ------------------------------------------------------------------------------
+# Leitura do DataSet que será utilizado.
+# ------------------------------------------------------------------------------
+
+# Leitura
+df = pd.read_csv("f1_pitstops_2018_2024.csv")
+
+
+# ------------------------------------------------------------------------------
+# Visualização da Estrutura
+# ------------------------------------------------------------------------------
+
+df.head()
+
+df.tail()
+
+df.shape
+
+
+# ------------------------------------------------------------------------------
+# Correção do nome dos pilotos que se encontravam errados no dataset.
+# ------------------------------------------------------------------------------
+
+df['Driver'] = df['Driver'].replace('.*Kimi R.*', 'Kimi Räikkönen', regex=True)
+df['Driver'] = df['Driver'].replace('.*Sergio P.*', 'Sergio Pérez', regex=True)
+df['Driver'] = df['Driver'].replace('.*lkenberg.*', 'Nico Hülkenberg', regex=True)
+
+
+# ------------------------------------------------------------------------------
+# Visualização da estrutura com a correção do nomes errados.
+# ------------------------------------------------------------------------------
+
+df.head()
+
+df.tail()
+
+
+# ------------------------------------------------------------------------------
+# Tipos de váriaveis utilizadas no Data Frame
+# ------------------------------------------------------------------------------
+
+df.info()
+
+
+# ------------------------------------------------------------------------------
+# Estatísticas Descritivas
+# ------------------------------------------------------------------------------
+
+df.describe()
+
+df.median(numeric_only=True)
+
+# Moda das Colunas Númericas.
+
+colunas_numericas = df.select_dtypes(include='number')
+
+# Loop que passa de coluna a coluna, uma por uma.
+for coluna in colunas_numericas.columns:
+
+    # Calcula a moda, remove os valores nulos da conta e transforma numa lista limpa (para Null não ser Moda)
+    modas = df[coluna].mode().dropna().tolist()
+
+    # Imprime o resultado
+    print(f"{coluna}: {modas}")
+
+
+# ------------------------------------------------------------------------------
+# Identificação de Outliers e Inconsistências nos Dados
+# ------------------------------------------------------------------------------
+
+# Inconsistências (Erros nos Dados)
+
+# Procura linha duplicadas
+duplicadas = df.duplicated().sum()
+print(f"Linhas duplicadas: {duplicadas}")
+
+# Procura valores nulos (Faltantes)
+print("\nValores nulos por coluna:")
+print(df.isnull().sum()[df.isnull().sum() > 0])
+
+# Procura erros de lógica (Como por exemplo, PitStop negativo.)
+df['Pit_Time'] = pd.to_numeric(df['Pit_Time'], errors='coerce')
+erros_tempo = df[df['Pit_Time'] <= 0]
+print(f"\nPit stops com tempo inválido (<= 0): {len(erros_tempo)}")
+
+# Erros de lógica cruzada (Como por exemplo, PitStop ocorrendo em uma volta maior que o total de voltas da corrida)
+df_valido = df.dropna(subset=['Pit_Lap', 'Laps'])
+erros_voltas = df_valido[df_valido['Pit_Lap'] > df_valido['Laps']]
+print(f"Pit stops em voltas impossíveis: {len(erros_voltas)}")
+
+# Limpeza dessas Inconsistências.
+
+# Copiar o df original para um novo, por segurança.
+df_limpo = df.copy()
+
+# Deletando todas as linhas onde não houve pit stop real
+# (ou seja, onde Pit_Time ou Pit_Lap ficaram vazios após nossa conversão)
+df_limpo = df_limpo.dropna(subset=['Pit_Time', 'Pit_Lap'])
+print(f"Linhas após remover os 'Final Stints': {len(df_limpo)}")
+
+# Para o clima, preenchemos os valores vazios com a MEDIANA DA PRÓPRIA CORRIDA
+colunas_clima = ['Air_Temp_C', 'Track_Temp_C', 'Humidity_%', 'Wind_Speed_KMH']
+
+for col in colunas_clima:
+    # Agrupa por Temporada e Nome da Corrida para preencher com a mediana local
+    df_limpo[col] = df_limpo.groupby(['Season', 'Race Name'])[col].transform(lambda x: x.fillna(x.median()))
+
+    # Se uma corrida inteira estiver sem sensor, preenche o que sobrou com a mediana geral
+    df_limpo[col] = df_limpo[col].fillna(df_limpo[col].median())
+
+print("\nValores nulos agora nas colunas de clima (após ajuste por corrida):")
+print(df_limpo[colunas_clima].isnull().sum())
+
+# Outliers (Valores Atípicos)
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 3))
+# Criando um boxplot horizontal do tempo de pit stop
+sns.boxplot(x=df['Pit_Time'], color='lightblue')
+plt.title('Identificação Visual de Outliers (Pit_Time)')
+plt.show()
+
+# Identificando e separando Outliers do Código.
+
+
+# Será utilizado o Método Estatístico: Intervalo Interquartil
+
+
+# Definir os quartis para a coluna Pit_Time
+Q1 = df['Pit_Time'].quantile(0.25)
+Q3 = df['Pit_Time'].quantile(0.75)
+IQR = Q3 - Q1
+
+# Definir os limites aceitáveis
+limite_inferior = Q1 - 1.5 * IQR
+limite_superior = Q3 + 1.5 * IQR
+
+print(f"Qualquer pit stop abaixo de {limite_inferior:.2f}s ou acima de {limite_superior:.2f}s é outlier.")
+
+# Filtrar a tabela para ver quem são esses outliers
+outliers = df[(df['Pit_Time'] < limite_inferior) | (df['Pit_Time'] > limite_superior)]
+print(f"\nTotal de Outliers encontrados: {len(outliers)}")
+
+# Mostrando os 5 PitStops mais longos
+print("\nTop 5 Pit Stops mais longos (Outliers):")
+print(outliers[['Season', 'Driver', 'Constructor', 'Race Name', 'Pit_Time']].sort_values(by='Pit_Time', ascending=False).head())
+
+
+# ------------------------------------------------------------------------------
+# Um padrão que pode ser observado foi no British Grand Prix de 2022 os 5 maiores PitStops ocorreram, essa corrida ficou marcada pelo acidente grave na largada do incidente com o piloto Chinês Zhou Guanyu, além da corrida ser interrompida com bandeira vermelha, fazendo com que essas maiores contagens fossem em bandeira vermelha por isso tão altas.
+# ------------------------------------------------------------------------------
+
+
+# ------------------------------------------------------------------------------
+# Análise de correlação entre variáveis
+# ------------------------------------------------------------------------------
+
+# Selecionamos apenas as colunas que têm números (correlação não funciona com texto)
+df_numerico = df_limpo.select_dtypes(include=['float64', 'int64'])
+
+# Calculamos a matriz de correlação (vai de -1 a 1)
+matriz_corr = df_numerico.corr()
+
+# Desenhar o gráfico
+plt.figure(figsize=(14, 10))
+
+# Criar uma "máscara" para cortar a metade superior do gráfico (pois ela é repetida)
+mascara = np.triu(np.ones_like(matriz_corr, dtype=bool))
+
+# Gerar o Mapa de Calor
+sns.heatmap(matriz_corr,
+            mask=mascara,
+            cmap='coolwarm',  # Cores: azul (negativo), branco (zero), vermelho (positivo)
+            annot=False,
+            linewidths=0.5,
+            vmin=-1, vmax=1)
+
+plt.title('Mapa de Calor: Correlação entre Variáveis Numéricas (F1)', fontsize=16)
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+plt.show()
+
+# Maiores correlações com o Tempo de Pit Stop (Target)
+print("\nTop variáveis que mais se correlacionam com o Tempo do Pit Stop:")
+# Ordenamos do maior para o menor impacto (seja positivo ou negativo)
+corr_pit = matriz_corr['Pit_Time'].drop('Pit_Time').abs().sort_values(ascending=False)
+print(corr_pit.head(5))
+
+
+# ------------------------------------------------------------------------------
+# Visualizações gráficas
+# ------------------------------------------------------------------------------
+
+# Gráfico de Barra
+
+
+print("Média de Voltas na Pista por Composto de Pneu")
+
+# Agrupar por pneu e calcular a média do comprimento do Stint
+stint_por_pneu = df_limpo.groupby('Tire Compound')['Stint Length'].mean().sort_values(ascending=False).reset_index()
+
+# Mostrar a tabela em texto
+print(stint_por_pneu)
+
+# Criar o gráfico de barras
+plt.figure(figsize=(10, 6))
+
+sns.barplot(data=stint_por_pneu, x='Tire Compound', y='Stint Length', hue='Tire Compound', palette='magma', legend=False)
+
+plt.title('Qual pneu dura mais? (Média de Voltas por Stint)', fontsize=14)
+plt.xlabel('Composto do Pneu (Tire Compound)')
+plt.ylabel('Média de Voltas na Pista (Stint Length)')
+plt.xticks(rotation=45) # Nome dos pneus inclinados para não baterem uns nos outros
+
+# Números em cima de cada barra
+for index, row in stint_por_pneu.iterrows():
+    plt.text(index, row['Stint Length'] + 0.5, round(row['Stint Length'], 1), color='black', ha="center")
+
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# Os compostos como ULTRASOFT e SUPERSOFT apresentaram médias de stint relativamente altas, próximas ou superiores às observadas para o HARD em alguns períodos.
+# ------------------------------------------------------------------------------
+
+# Gráfico de Barra
+
+print("Gerando gráfico: Pódios por Equipe e Piloto...")
+
+# Filtrar apenas resultados de pódio e remover repetições
+# Como o dataset está em nível de stint, um piloto pode aparecer várias vezes
+# na mesma corrida. Aqui vai ser contado apenas um pódio por piloto/corrida.
+df_podios_unicos = (
+    df_limpo[df_limpo['Position'] <= 3]
+    .drop_duplicates(subset=['Season', 'Round', 'Driver', 'Position'])
+)
+
+# Agrupar por Construtor e Piloto e contar pódios únicos
+tabela_podios = (
+    df_podios_unicos
+    .groupby(['Constructor', 'Driver'])
+    .size()
+    .unstack(fill_value=0)
+)
+
+# Ordenar as equipes que têm mais pódios
+tabela_podios['Total'] = tabela_podios.sum(axis=1)
+tabela_podios = tabela_podios.sort_values('Total', ascending=False)
+tabela_podios = tabela_podios.drop(columns='Total')
+
+sns.set_theme(style="whitegrid")
+
+ax = tabela_podios.plot(
+    kind='bar',
+    stacked=True,
+    figsize=(12, 6),
+    cmap='viridis',
+    edgecolor='white',
+    linewidth=1
+)
+
+plt.suptitle(
+    "Total de Pódios por Equipe e Contribuição por Piloto",
+    fontsize=15,
+    fontweight='bold',
+    y=0.96
+)
+
+plt.title(
+    "Contagem de pódios únicos por corrida; cores indicam o piloto",
+    fontsize=11,
+    color='gray',
+    pad=10
+)
+
+plt.xlabel("Construtor (Equipe)", fontweight='bold')
+plt.ylabel("Número Total de Pódios", fontweight='bold')
+
+plt.xticks(rotation=45, ha='right')
+
+plt.legend(
+    title="Piloto",
+    bbox_to_anchor=(1.05, 1),
+    loc='upper left'
+)
+
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# É possível notar que as equipes que mais brigaram por título no período dos dados (2018 - 2024) são as equipes com mais pódios, com destaque para Max Verstappen e Lewis Hamilton que figuraram batalhas por vitórias históricas.
+# ------------------------------------------------------------------------------
+
+# Gráfico de Dispersão
+
+print("Gerando gráfico: Efeito da Temperatura")
+
+# Filtro de segurança
+df_pitstops_clean = df_limpo.dropna(subset=['Track_Temp_C', 'Pit_Time', 'Constructor'])
+df_pitstops_clean = df_pitstops_clean[df_pitstops_clean['Pit_Time'] <= 40]
+
+# Filtrar as Top 10 equipes
+top_10_equipes = df_pitstops_clean['Constructor'].value_counts().nlargest(10).index
+df_pitstops_clean = df_pitstops_clean[df_pitstops_clean['Constructor'].isin(top_10_equipes)]
+
+sns.set_theme(style="whitegrid", rc={"axes.edgecolor": "gray", "grid.color": "#e0e0e0"})
+
+# Criar o painel de gráficos (facetas)
+g = sns.lmplot(
+    data=df_pitstops_clean,
+    x='Track_Temp_C',
+    y='Pit_Time',
+    col='Constructor',
+    hue='Constructor',
+    col_wrap=4,
+    ci=None,
+    height=3.5,
+    aspect=1.1,
+    legend=False,
+    scatter_kws={'alpha': 0.6, 'edgecolor': 'w'},
+    line_kws={'color': 'black', 'linestyle': '--', 'linewidth': 1.5}
+)
+
+g.despine(top=False, right=False)
+
+for ax, title in zip(g.axes.flat, g.col_names):
+    ax.set_title(
+        title,
+        fontsize=10,
+        fontweight='bold',
+        bbox=dict(facecolor='#f0f0f0', edgecolor='gray', boxstyle='square,pad=0.3')
+    )
+
+
+# Apagando os nomes dos eixos individuais que o Seaborn coloca debaixo de cada coluna
+g.set_axis_labels("", "")
+
+# Título único centralizado debaixo de toda a figura para o eixo X
+g.fig.supxlabel("Temperatura da Pista em Celsius", fontweight='bold', fontsize=12, y=0.07)
+
+# Título único centralizado à esquerda da figura para o eixo Y
+g.fig.supylabel("Tempo Total do Pit Stop (segundos)", fontweight='bold', fontsize=12, x=0.01)
+g.fig.suptitle("Temperatura da Pista Influencia o Tempo do Pit Stop?", fontsize=16, fontweight='bold', y=1.05)
+g.fig.subplots_adjust(bottom=0.16, left=0.06)
+g.fig.text(0.96, 0.02, "A linha de regressão mostra a tendência geral para cada equipe.",
+           ha='right', fontsize=10, color='gray', style='italic')
+
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# A temperatura da pista influencia o tempo de pit stop, mas a magnitude desse impacto varia entre os construtores. Algumas equipes podem ser mais eficientes em se adaptar a condições de calor, enquanto outras enfrentam maiores dificuldades. Esse fenômeno pode ser importante para otimizar estratégias de pit stop em diferentes condições climáticas durante as corridas.
+# ------------------------------------------------------------------------------
+
+# Gráfico de Dispersão
+
+print("Gráfico: Agressividade vs Desgaste com Cores...")
+
+sns.set_theme(style="whitegrid")
+
+plt.figure(figsize=(10, 6))
+
+# Gráfico de dispersão com TAMANHO e COR
+sns.scatterplot(
+    data=df_limpo,
+    x='Driver Aggression Score',
+    y='Tire Usage Aggression',
+    size='TotalPitStops',
+    hue='TotalPitStops',
+    palette='viridis',
+    sizes=(20, 200),
+    alpha=0.7
+)
+
+# Linha de tendência
+sns.regplot(
+    data=df_limpo,
+    x='Driver Aggression Score',
+    y='Tire Usage Aggression',
+    scatter=False,
+    color="#c41e3a",
+    ci=None
+)
+
+
+plt.suptitle("Agressividade do Piloto vs. Desgaste dos Pneus", fontsize=15, fontweight='bold', y=0.96)
+plt.title("Tamanho e cor indicam o total de pit stops realizados pelo piloto", fontsize=11, color='gray', pad=10)
+plt.xlabel("Pontuação de Agressividade do Piloto", fontweight='bold')
+plt.ylabel("Nível de Desgaste dos Pneus", fontweight='bold')
+plt.legend(title="Total de Pit Stops", bbox_to_anchor=(1.05, 1), loc='upper left')
+
+plt.tight_layout()
+plt.show()
+
+# Grafico de Linha
+
+
+print("\n─── Tempo Médio de Pit Stop por Temporada (2018–2024) ───")
+#Formatação dos Dados
+pit_por_temporada = (
+    df_limpo.groupby('Season')['AvgPitStopTime']
+    .median()
+    .reset_index()
+    .rename(columns={'AvgPitStopTime': 'Tempo Médio (s)'})
+)
+
+plt.figure(figsize=(10, 6))
+
+plt.plot(
+    pit_por_temporada['Season'],
+    pit_por_temporada['Tempo Médio (s)'],
+    marker='o', linewidth=2.5, color='#E10600', markersize=8
+)
+
+# Anotação do valor em cada ponto
+for _, row in pit_por_temporada.iterrows():
+    plt.text(row['Season'], row['Tempo Médio (s)'] + 0.3,
+             f"{row['Tempo Médio (s)']:.1f}s",
+             ha='center', fontsize=10, color='black')
+
+# Destaque para 2020 (COVID-19)
+plt.axvspan(2019.6, 2020.4, color='#FFD700', alpha=0.2, label='Temporada COVID-19')
+
+plt.title('Evolução do Tempo Médio de Pit Stop por Temporada\n')
+plt.xlabel('Temporada')
+plt.ylabel('Tempo Médio de Pit Stop (segundos) — Mediana')
+plt.ylim(22, 29)
+plt.legend()
+plt.grid(axis='y', linestyle='--', alpha=0.5)
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# Observa-se um aumento na mediana dos tempos de pit stop em torno da temporada de 2020, período marcado por mudanças operacionais relacionadas à pandemia.
+# ------------------------------------------------------------------------------
+
+# Gráfico de Linha
+# Comprimento Médio dos Stints por Temporada e Composto
+
+print("\n─── Comprimento Médio dos Stints por Temporada e Composto ───")
+#Formatação dos Dados
+compostos_principais = ['SOFT', 'MEDIUM', 'HARD']
+df_compostos = df_limpo[df_limpo['Tire Compound'].isin(compostos_principais)]
+
+stint_compound = (
+    df_compostos.groupby(['Season', 'Tire Compound'])['Stint Length']
+    .mean()
+    .reset_index()
+    .rename(columns={'Stint Length': 'Stint Médio (voltas)'})
+)
+
+
+cores_compound = {'SOFT': 'red', 'MEDIUM': 'yellow', 'HARD': 'gray'}
+
+plt.figure(figsize=(11, 6))
+
+for composto in compostos_principais:
+    sub = stint_compound[stint_compound['Tire Compound'] == composto]
+    plt.plot(sub['Season'], sub['Stint Médio (voltas)'], marker='o', linewidth=2.5, label=composto, color=cores_compound[composto], markeredgecolor= cores_compound[composto], markeredgewidth=0.8, markersize=8)
+    # Valor no último ponto de cada linha
+    ultimo = sub.iloc[-1]
+    plt.text(ultimo['Season'] + 0.1, ultimo['Stint Médio (voltas)'], f"{ultimo['Stint Médio (voltas)']:.1f}", fontsize=9, color=cores_compound[composto])
+
+plt.title('Duração Média dos Stints por Composto ao Longo das Temporadas\n'
+          'Observação: Stints na Fórmula 1 referem-se às sequências de voltas consecutivas em que um piloto utiliza o mesmo conjunto de pneus antes de realizar uma parada nos boxes para troca',
+          fontsize=13)
+plt.xlabel('Temporada')
+plt.ylabel('Média de Voltas no Stint')
+plt.legend(title='Composto', labelcolor='black', title_fontsize=10, fontsize=10)
+plt.grid(linestyle='--', alpha=0.4)
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# Observasse que os Stints com pneus Soft encurtam cada vez mais, mostrando que as competidoras estão adotando a estratégia de pneu rápido e descartável.
+# ------------------------------------------------------------------------------
+
+# Gráfico de Histograma
+
+print("\n─── Distribuição do Tempo Médio de Pit Stop por Piloto/Corrida ───")
+
+# Criar uma base com apenas um registro por piloto em cada corrida
+df_pit_driver_race = (
+    df_limpo
+    .dropna(subset=['AvgPitStopTime'])
+    .drop_duplicates(subset=['Season', 'Round', 'Driver'])
+)
+
+# Filtrar apenas tempos médios de pit stop até 120 segundos
+df_pit = df_pit_driver_race[
+    df_pit_driver_race['AvgPitStopTime'] <= 120
+]
+
+# Calcular média e mediana
+media_pit = df_pit['AvgPitStopTime'].mean()
+mediana_pit = df_pit['AvgPitStopTime'].median()
+
+print(f"Média: {media_pit:.2f}s")
+print(f"Mediana: {mediana_pit:.2f}s")
+
+# Criar o histograma
+plt.figure(figsize=(10, 6))
+
+plt.hist(
+    df_pit['AvgPitStopTime'],
+    bins=40,
+    edgecolor='white',
+    alpha=0.85
+)
+
+# Linhas de média e mediana
+plt.axvline(
+    media_pit,
+    linestyle='--',
+    linewidth=1.8,
+    label=f'Média: {media_pit:.2f}s'
+)
+
+plt.axvline(
+    mediana_pit,
+    linestyle='-',
+    linewidth=1.8,
+    label=f'Mediana: {mediana_pit:.2f}s'
+)
+
+plt.title(
+    'Distribuição do Tempo Médio de Pit Stop por Piloto/Corrida',
+    fontsize=13
+)
+
+plt.xlabel('Tempo Médio de Pit Stop (segundos)')
+plt.ylabel('Frequência')
+
+plt.legend()
+plt.grid(axis='y', linestyle='--', alpha=0.4)
+
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# A presença de paradas acima de 40 segundos revela que falhas operacionais e penalidades ainda ocorrem com frequência suficiente para impactar a média geral. Isso levanta uma hipótese importante: equipes com maior consistência nos tempos de pit stop tendem a ter melhor desempenho ao longo da temporada, já que uma parada lenta pode custar posições decisivas na corrida.
+# ------------------------------------------------------------------------------
+
+#Grafico Boxplot
+
+print("Boxplot — Driver Aggression Score por Piloto")
+
+# Seleciona os 10 pilotos com mais dados para não poluir o gráfico
+top10_pilotos = (
+    df_limpo.groupby('Driver')['Driver Aggression Score']
+    .count()
+    .sort_values(ascending=False)
+    .head(10)
+    .index.tolist()
+)
+
+# Filtra outliers extremos de agressividade
+df_box = df_limpo[
+    (df_limpo['Driver'].isin(top10_pilotos)) &
+    (df_limpo['Driver Aggression Score'] <= 100)
+]
+
+# Ordenar pelos pilotos com maior mediana
+ordem = (
+    df_box.groupby('Driver')['Driver Aggression Score']
+    .median()
+    .sort_values(ascending=False)
+    .index.tolist()
+)
+
+plt.figure(figsize=(13, 6))
+
+sns.boxplot(
+    data=df_box,
+    x='Driver', y='Driver Aggression Score',
+    order=ordem,
+    palette='magma',
+    hue='Driver',
+    legend=False
+)
+
+plt.title('Distribuição da Pontuação de Agressividade por Piloto\n', fontsize=13)
+plt.xlabel('Piloto')
+plt.ylabel('Pontuação de Agressividade do Piloto')
+plt.xticks(rotation=45, ha='right')
+plt.grid(axis='y', linestyle='--', alpha=0.4)
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# Todos os pilotos apresentam mediana muito próxima, entre 6 e 7 pontos, indicando que o comportamento de pilotagem é homogêneo no pelotão em condições normais de corrida. As diferenças reais entre pilotos não estão na tendência central, mas sim nos outliers, picos isolados de agressividade que chegam a 80-100 pontos e ocorrem em todos os pilotos sem exceção.
+# ------------------------------------------------------------------------------
